@@ -104,57 +104,33 @@ class PasswordGeneratorService
         $sets = [];
 
         if ($digits) {
-            $set = str_split(self::DIGITS);
-
-            if ($digitsExclude !== null && trim($digitsExclude) !== '') {
-                $exclude = $this->normalizeChars($digitsExclude, '/[0-9]/');
-                if ($exclude === []) {
-                    throw new PasswordGenerationException(PasswordErrorCode::DigitsExcludeInvalid);
-                }
-
-                $set = array_values(array_diff($set, $exclude));
-                if ($set === []) {
-                    throw new PasswordGenerationException(PasswordErrorCode::DigitsExcludedAll);
-                }
-            }
-
-            $sets[] = $set;
+            $sets[] = $this->buildSetWithExclusions(
+                base: str_split(self::DIGITS),
+                excludeInput: $digitsExclude,
+                normalizeExclude: fn (string $value): array => $this->normalizeChars($value, '/[0-9]/'),
+                invalidExcludeCode: PasswordErrorCode::DigitsExcludeInvalid,
+                excludedAllCode: PasswordErrorCode::DigitsExcludedAll,
+            );
         }
 
         if ($uppercase) {
-            $set = str_split(strtoupper(self::LETTERS));
-
-            if ($uppercaseExclude !== null && trim($uppercaseExclude) !== '') {
-                $exclude = $this->normalizeUppercaseChars($uppercaseExclude);
-                if ($exclude === []) {
-                    throw new PasswordGenerationException(PasswordErrorCode::UppercaseExcludeInvalid);
-                }
-
-                $set = array_values(array_diff($set, $exclude));
-                if ($set === []) {
-                    throw new PasswordGenerationException(PasswordErrorCode::UppercaseExcludedAll);
-                }
-            }
-
-            $sets[] = $set;
+            $sets[] = $this->buildSetWithExclusions(
+                base: str_split(strtoupper(self::LETTERS)),
+                excludeInput: $uppercaseExclude,
+                normalizeExclude: $this->normalizeUppercaseChars(...),
+                invalidExcludeCode: PasswordErrorCode::UppercaseExcludeInvalid,
+                excludedAllCode: PasswordErrorCode::UppercaseExcludedAll,
+            );
         }
 
         if ($lowercase) {
-            $set = str_split(self::LETTERS);
-
-            if ($lowercaseExclude !== null && trim($lowercaseExclude) !== '') {
-                $exclude = $this->normalizeLowercaseChars($lowercaseExclude);
-                if ($exclude === []) {
-                    throw new PasswordGenerationException(PasswordErrorCode::LowercaseExcludeInvalid);
-                }
-
-                $set = array_values(array_diff($set, $exclude));
-                if ($set === []) {
-                    throw new PasswordGenerationException(PasswordErrorCode::LowercaseExcludedAll);
-                }
-            }
-
-            $sets[] = $set;
+            $sets[] = $this->buildSetWithExclusions(
+                base: str_split(self::LETTERS),
+                excludeInput: $lowercaseExclude,
+                normalizeExclude: $this->normalizeLowercaseChars(...),
+                invalidExcludeCode: PasswordErrorCode::LowercaseExcludeInvalid,
+                excludedAllCode: PasswordErrorCode::LowercaseExcludedAll,
+            );
         }
 
         if ($sets === []) {
@@ -168,6 +144,35 @@ class PasswordGeneratorService
         }
 
         return $sets;
+    }
+
+    /**
+     * @param array<int, string> $base
+     * @param callable(string): array<int, string> $normalizeExclude
+     * @return array<int, string>
+     */
+    private function buildSetWithExclusions(
+        array $base,
+        ?string $excludeInput,
+        callable $normalizeExclude,
+        PasswordErrorCode $invalidExcludeCode,
+        PasswordErrorCode $excludedAllCode,
+    ): array {
+        if ($excludeInput === null || trim($excludeInput) === '') {
+            return $base;
+        }
+
+        $exclude = $normalizeExclude($excludeInput);
+        if ($exclude === []) {
+            throw new PasswordGenerationException($invalidExcludeCode);
+        }
+
+        $set = array_values(array_diff($base, $exclude));
+        if ($set === []) {
+            throw new PasswordGenerationException($excludedAllCode);
+        }
+
+        return $set;
     }
 
     /**
