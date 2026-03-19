@@ -4,33 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Password Generator</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 720px;
-            margin: 32px auto;
-            padding: 0 12px;
-            line-height: 1.4;
-        }
-        h1 { margin: 0 0 16px; }
-        form { border: 1px solid #ddd; padding: 16px; border-radius: 8px; }
-        label { display: inline-block; margin: 6px 0; }
-        input[type="number"], input[type="text"] {
-            width: 100%;
-            max-width: 420px;
-            padding: 8px 10px;
-            margin-top: 6px;
-        }
-        .row { margin: 10px 0; }
-        .errors { border: 1px solid #f3b4be; background: #fff5f7; padding: 10px 12px; border-radius: 8px; margin: 0 0 12px; }
-        .errors ul { margin: 0; padding-left: 18px; }
-        .result { border: 1px solid #c7dbff; background: #f3f8ff; padding: 10px 12px; border-radius: 8px; margin-top: 14px; }
-        pre { margin: 8px 0 0; padding: 10px; background: #fff; border: 1px solid #eee; border-radius: 8px; overflow: auto; }
-        button { padding: 8px 12px; }
-        details { margin-top: 12px; }
-        summary { cursor: pointer; }
-        .muted { color: #666; font-size: 12px; }
-    </style>
+    <link rel="stylesheet" href="{{ asset('css/passwords.css') }}">
 </head>
 <body>
     <h1>Password Generator</h1>
@@ -45,6 +19,13 @@
         </div>
     @endif
 
+    @if (session('length_notice'))
+        <div class="result">
+            <strong>Notice</strong>
+            <pre>{{ session('length_notice') }}</pre>
+        </div>
+    @endif
+
     <form method="POST" action="{{ route('passwords.generate') }}">
         @csrf
 
@@ -54,6 +35,18 @@
                 <input id="length" type="number" name="length" value="{{ old('length', 12) }}" min="1" required>
             </label>
             <div id="length-hint" class="muted"></div>
+        </div>
+
+        <div class="row">
+            <label>
+                <input type="radio" name="length_mode" value="hard" {{ old('length_mode', 'hard') === 'hard' ? 'checked' : '' }}>
+                Hard length
+            </label>
+            <label>
+                <input type="radio" name="length_mode" value="soft" {{ old('length_mode', 'hard') === 'soft' ? 'checked' : '' }}>
+                Soft length
+            </label>
+            <div class="muted">Soft length will generate the maximum possible length if the requested length is not possible.</div>
         </div>
 
         <div class="row">
@@ -113,49 +106,7 @@
             </ul>
         </details>
     </form>
-
-    <script>
-        (function () {
-            const lengthInput = document.getElementById('length');
-            const hint = document.getElementById('length-hint');
-
-            const digits = document.getElementById('digits');
-            const uppercase = document.getElementById('uppercase');
-            const lowercase = document.querySelector('input[name="lowercase"]');
-
-            function minLength() {
-                let c = 0;
-                if (digits && digits.checked) c++;
-                if (uppercase && uppercase.checked) c++;
-                if (lowercase && lowercase.checked) c++;
-                return Math.max(1, c);
-            }
-
-            function update() {
-                const min = minLength();
-                if (lengthInput) {
-                    lengthInput.min = String(min);
-                }
-
-                if (hint) {
-                    const current = lengthInput && lengthInput.value !== '' ? Number(lengthInput.value) : null;
-                    if (current !== null && !Number.isNaN(current) && current < min) {
-                        hint.textContent = 'Minimum length for the selected sets: ' + min + '. Current value is below the minimum.';
-                    } else {
-                        hint.textContent = 'Minimum length for the selected sets: ' + min + '.';
-                    }
-                }
-            }
-
-            [digits, uppercase, lowercase, lengthInput].forEach((el) => {
-                if (!el) return;
-                el.addEventListener('change', update);
-                el.addEventListener('input', update);
-            });
-
-            update();
-        })();
-    </script>
+    <script src="{{ asset('js/passwords.js') }}" defer></script>
 
     @if (session('generated_password'))
         <div class="result">

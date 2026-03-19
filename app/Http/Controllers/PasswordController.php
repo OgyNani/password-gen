@@ -25,6 +25,7 @@ class PasswordController extends Controller
     {
         $data = $request->validate([
             'length' => ['required', 'integer', 'min:1', 'max:1000'],
+            'length_mode' => ['nullable', 'string', 'in:hard,soft'],
             'digits' => ['nullable', 'boolean'],
             'uppercase' => ['nullable', 'boolean'],
             'lowercase' => ['nullable', 'boolean'],
@@ -40,9 +41,10 @@ class PasswordController extends Controller
         $digitsExclude = $data['digits_exclude'] ?? null;
         $uppercaseExclude = $data['uppercase_exclude'] ?? null;
         $lowercaseExclude = $data['lowercase_exclude'] ?? null;
+        $lengthMode = $data['length_mode'] ?? 'hard';
 
         try {
-            $password = $this->passwordGenerator->generateUnique(
+            $result = $this->passwordGenerator->generateUniqueResult(
                 length: $length,
                 digits: $digits,
                 uppercase: $uppercase,
@@ -50,6 +52,7 @@ class PasswordController extends Controller
                 digitsExclude: $digitsExclude,
                 uppercaseExclude: $uppercaseExclude,
                 lowercaseExclude: $lowercaseExclude,
+                lengthMode: $lengthMode,
             );
         } catch (PasswordGenerationException $e) {
             return back()->withErrors(['length' => $e->getMessage()])->withInput();
@@ -59,8 +62,18 @@ class PasswordController extends Controller
             ])->withInput();
         }
 
-        return back()->with([
-            'generated_password' => $password,
-        ])->withInput();
+        $flash = [
+            'generated_password' => $result->password,
+        ];
+
+        if ($result->lengthMode === 'soft' && $result->actualLength < $result->requestedLength) {
+            $flash['length_notice'] = sprintf(
+                'Requested length %d is not possible with the selected sets. Generated a password with length %d (max available).',
+                $result->requestedLength,
+                $result->actualLength,
+            );
+        }
+
+        return back()->with($flash)->withInput();
     }
 }

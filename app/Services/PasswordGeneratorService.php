@@ -2,9 +2,11 @@
 
 namespace App\Services;
 
+use App\DTO\PasswordGenerationResult;
 use App\Enums\PasswordErrorCode;
 use App\Exceptions\PasswordGenerationException;
 use App\Models\GeneratedPassword;
+use App\Random\RandomBytesEngine;
 use Illuminate\Database\QueryException;
 
 class PasswordGeneratorService
@@ -26,6 +28,13 @@ class PasswordGeneratorService
         'unique constraint',
     ];
 
+    private readonly \Random\Randomizer $randomizer;
+
+    public function __construct(?\Random\Randomizer $randomizer = null)
+    {
+        $this->randomizer = $randomizer ?? new \Random\Randomizer(new RandomBytesEngine());
+    }
+
     public function generateUnique(
         int $length,
         bool $digits,
@@ -35,6 +44,28 @@ class PasswordGeneratorService
         ?string $uppercaseExclude = null,
         ?string $lowercaseExclude = null,
     ): string {
+        return $this->generateUniqueResult(
+            length: $length,
+            digits: $digits,
+            uppercase: $uppercase,
+            lowercase: $lowercase,
+            digitsExclude: $digitsExclude,
+            uppercaseExclude: $uppercaseExclude,
+            lowercaseExclude: $lowercaseExclude,
+            lengthMode: 'hard',
+        )->password;
+    }
+
+    public function generateUniqueResult(
+        int $length,
+        bool $digits,
+        bool $uppercase,
+        bool $lowercase,
+        ?string $digitsExclude = null,
+        ?string $uppercaseExclude = null,
+        ?string $lowercaseExclude = null,
+        string $lengthMode = 'hard',
+    ): PasswordGenerationResult {
         $sets = $this->buildSelectedSets(
             digits: $digits,
             uppercase: $uppercase,
@@ -50,9 +81,18 @@ class PasswordGeneratorService
 
         $pool = $this->buildPool($sets);
 
-        if ($length > count($pool)) {
-            throw new PasswordGenerationException(PasswordErrorCode::LengthExceedsAvailableUniqueChars);
+        $requestedLength = $length;
+        $maxLength = count($pool);
+
+        if ($requestedLength > $maxLength) {
+            if ($lengthMode === 'soft') {
+                $length = $maxLength;
+            } else {
+                throw new PasswordGenerationException(PasswordErrorCode::LengthExceedsAvailableUniqueChars);
+            }
         }
+
+        $actualLength = $length;
 
         $options = [
             'digits' => $digits,
@@ -61,6 +101,7 @@ class PasswordGeneratorService
             'digits_exclude' => $digitsExclude,
             'uppercase_exclude' => $uppercaseExclude,
             'lowercase_exclude' => $lowercaseExclude,
+            'length_mode' => $lengthMode,
         ];
 
         $attempts = 0;
@@ -79,10 +120,16 @@ class PasswordGeneratorService
                     'options' => $options,
                 ]);
 
-                return $password;
+                return new PasswordGenerationResult(
+                    password: $password,
+                    requestedLength: $requestedLength,
+                    actualLength: $actualLength,
+                    maxLength: $maxLength,
+                    lengthMode: $lengthMode,
+                );
             } catch (QueryException $e) {
                 if (!$this->isUniqueConstraintViolation($e)) {
-                    throw $e;
+                    throw new PasswordGenerationException(PasswordErrorCode::DatabaseWriteFailed, $e);
                 }
             }
         }
@@ -202,7 +249,7 @@ class PasswordGeneratorService
         $result = [];
 
         foreach ($sets as $set) {
-            $picked = $set[random_int(0, count($set) - 1)];
+            $picked = $set[$this->randomizer->getInt(0, count($set) - 1)];
 
             if (!in_array($picked, $available, true)) {
                 $picked = $this->pickFromIntersection($set, $available);
@@ -221,12 +268,12 @@ class PasswordGeneratorService
                 throw new PasswordGenerationException(PasswordErrorCode::PoolExhausted);
             }
 
-            $picked = $available[random_int(0, count($available) - 1)];
+            $picked = $available[$this->randomizer->getInt(0, count($available) - 1)];
             $result[] = $picked;
             $available = array_values(array_diff($available, [$picked]));
         }
 
-        $this->shuffleSecure($result);
+        $this->randomizer->shuffleArray($result);
 
         return implode('', $result);
     }
@@ -242,18 +289,7 @@ class PasswordGeneratorService
             return null;
         }
 
-        return $intersection[random_int(0, count($intersection) - 1)];
-    }
-
-    /**
-     * @param array<int, string> $chars
-     */
-    private function shuffleSecure(array &$chars): void
-    {
-        for ($i = count($chars) - 1; $i > 0; $i--) {
-            $j = random_int(0, $i);
-            [$chars[$i], $chars[$j]] = [$chars[$j], $chars[$i]];
-        }
+        return $intersection[$this->randomizer->getInt(0, count($intersection) - 1)];
     }
 
     /**
